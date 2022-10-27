@@ -1,6 +1,6 @@
 Usage: 
 
-./S3APISigV4.sh -O <operation> -e <endpoint> -a <access_key> -s <secret_key> -b <bucket> -o <object>
+`./S3APISigV4.sh -O <operation> -e <endpoint> -a <access_key> -s <secret_key> -b <bucket> -o <object>`
 
 Example:
 
