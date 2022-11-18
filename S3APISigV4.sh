@@ -8,9 +8,11 @@ Usage:
 Example:
 ./S3APISigV4.sh -O createBucket -a minioadmin -s minioadmin -e myminio.net:9000 -b mybucket
 ./S3APISigV4.sh -O listBuckets -a minioadmin -s minioadmin -e myminio.net:9000
+./S3APISigV4.sh -O deleteBucket -a minioadmin -s minioadmin -e myminio.net:9000 -b mybucket
 ./S3APISigV4.sh -O uploadObject -a minioadmin -s minioadmin -e myminio.net:9000 -b mybucket -f ./testfile
 ./S3APISigV4.sh -O listObjects -a minioadmin -s minioadmin -e myminio.net:9000 -b mybucket
 ./S3APISigV4.sh -O downloadObject -a minioadmin -s minioadmin -e myminio.net:9000 -b mybucket -o testfile
+./S3APISigV4.sh -O deleteObject -a minioadmin -s minioadmin -e myminio.net:9000 -b mybucket -o testfile
 
 -h, --help		Display help
 
@@ -38,7 +40,7 @@ EOF
 }
 
 showOperations() {
-	echo "createBucket, listBuckets, listObjects, uploadObject, downloadObject"
+	echo "createBucket, listBuckets, deleteBucket, listObjects, uploadObject, downloadObject, deleteObject"
 }
 
 
@@ -205,6 +207,31 @@ doCreateBucket() {
 	echo "$ret"
 }
 
+doDeleteBucket() {
+	echo "Do doDeleteBucket" >&2
+	appendHeader "host" "$HOSTNAME"
+	appendHeader "x-amz-content-sha256" "$EMPTYSHA256"
+	appendHeader "x-amz-date" "$DATE_L"
+
+	HTTP_METHOD="DELETE"
+	TARGET_URI="/${BUCKET_NAME}"
+	HEADERS=$(generateHeaders)
+	SIGNED_HEADERS=$(generateSignedHeaders)
+	REQ_HASH=$(generateCanonicalRequestHash "$HTTP_METHOD" "$TARGET_URI" "" "$HEADERS" "$SIGNED_HEADERS" "$EMPTYSHA256")
+	STRING_TO_SIGN=$(generateStringToSign "$REQ_HASH")
+	SIGN_KEY=$(generateSignKey)
+	SIGNATURE=$(generateSignature "$SIGN_KEY" "$STRING_TO_SIGN")
+
+	ret=$(curl -X ${HTTP_METHOD} -k \
+		--header "Host: ${HOSTNAME}" \
+		--header "X-Amz-Content-SHA256: ${EMPTYSHA256}" \
+		--header "X-Amz-Date: ${DATE_L}" \
+		--header "Authorization: ${SIGNATURE_ALGO} Credential=${ACCESS_KEY}/${DATE_S}/${REGION}/s3/aws4_request, SignedHeaders=${SIGNED_HEADERS}, Signature=${SIGNATURE}" \
+		${PROTOCOL}://${ENDPOINT}/${BUCKET_NAME})
+
+	echo "$ret"
+}
+
 doListBuckets() {
 	echo "Do ListBuckets" >&2
 
@@ -221,7 +248,7 @@ doListBuckets() {
 	SIGN_KEY=$(generateSignKey)
 	SIGNATURE=$(generateSignature "$SIGN_KEY" "$STRING_TO_SIGN")
 
-	ret=$(curl -s -X ${HTTP_METHOD} -k \
+	ret=$(curl -X ${HTTP_METHOD} -k \
 		--header "Host: ${HOSTNAME}" \
 		--header "X-Amz-Content-SHA256: ${EMPTYSHA256}" \
 		--header "X-Amz-Date: ${DATE_L}" \
@@ -247,7 +274,7 @@ doListObjects() {
 	SIGN_KEY=$(generateSignKey)
 	SIGNATURE=$(generateSignature "$SIGN_KEY" "$STRING_TO_SIGN")
 
-	ret=$(curl -s -X ${HTTP_METHOD} -k \
+	ret=$(curl -X ${HTTP_METHOD} -k \
 		--header "Host: ${HOSTNAME}" \
 		--header "X-Amz-Content-SHA256: ${EMPTYSHA256}" \
 		--header "X-Amz-Date: ${DATE_L}" \
@@ -276,7 +303,7 @@ doUploadObject() {
 	SIGN_KEY=$(generateSignKey)
 	SIGNATURE=$(generateSignature "$SIGN_KEY" "$STRING_TO_SIGN")
 
-	ret=$(curl -s -X ${HTTP_METHOD} -k --upload-file "${FILE_PATH}" \
+	ret=$(curl -X ${HTTP_METHOD} -k --upload-file "${FILE_PATH}" \
 		--header "Host: ${HOSTNAME}" \
 		--header "X-Amz-Content-SHA256: ${FILESHA256}" \
 		--header "X-Amz-Date: ${DATE_L}" \
@@ -302,7 +329,32 @@ doDownloadObject() {
 	SIGN_KEY=$(generateSignKey)
 	SIGNATURE=$(generateSignature "$SIGN_KEY" "$STRING_TO_SIGN")
 
-	ret=$(curl -s -X ${HTTP_METHOD} -k \
+	ret=$(curl -X ${HTTP_METHOD} -k -O \
+		--header "Host: ${HOSTNAME}" \
+		--header "X-Amz-Content-SHA256: ${EMPTYSHA256}" \
+		--header "X-Amz-Date: ${DATE_L}" \
+		--header "Authorization: ${SIGNATURE_ALGO} Credential=${ACCESS_KEY}/${DATE_S}/${REGION}/s3/aws4_request, SignedHeaders=${SIGNED_HEADERS}, Signature=${SIGNATURE}" \
+		${PROTOCOL}://${ENDPOINT}/${BUCKET_NAME}/${OBJECT_NAME})
+
+	echo "$ret"
+}
+
+doDeleteObject() {
+	echo "Do doDeleteObject" >&2
+	appendHeader "host" "$HOSTNAME"
+	appendHeader "x-amz-content-sha256" "$EMPTYSHA256"
+	appendHeader "x-amz-date" "$DATE_L"
+
+	HTTP_METHOD="DELETE"
+	TARGET_URI="/${BUCKET_NAME}/${OBJECT_NAME}"
+	HEADERS=$(generateHeaders)
+	SIGNED_HEADERS=$(generateSignedHeaders)
+	REQ_HASH=$(generateCanonicalRequestHash "$HTTP_METHOD" "$TARGET_URI" "" "$HEADERS" "$SIGNED_HEADERS" "$EMPTYSHA256")
+	STRING_TO_SIGN=$(generateStringToSign "$REQ_HASH")
+	SIGN_KEY=$(generateSignKey)
+	SIGNATURE=$(generateSignature "$SIGN_KEY" "$STRING_TO_SIGN")
+
+	ret=$(curl -X ${HTTP_METHOD} -k \
 		--header "Host: ${HOSTNAME}" \
 		--header "X-Amz-Content-SHA256: ${EMPTYSHA256}" \
 		--header "X-Amz-Date: ${DATE_L}" \
@@ -316,6 +368,9 @@ case "$OPERATION" in
 	createBucket) 
 		resp=$(doCreateBucket)
 		;;
+	deleteBucket)
+		resp=$(doDeleteBucket)
+		;;
 	listBuckets)
 		resp=$(doListBuckets)
 		;;
@@ -327,6 +382,9 @@ case "$OPERATION" in
 		;;
 	downloadObject)
 		resp=$(doDownloadObject)
+		;;
+	deleteObject)
+		resp=$(doDeleteObject)
 		;;
 	*)
 		echo "Invalid operation"
